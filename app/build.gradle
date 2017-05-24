@@ -1,0 +1,150 @@
+apply plugin: 'com.android.application'
+apply plugin: 'sonar-runner'
+apply plugin: 'jacoco'
+apply plugin: 'spoon'
+
+def appVersionName() {
+    return "0.1"
+}
+
+def appVersionCode() {
+    return 1
+}
+
+def appName() {
+    return "SQDemo"
+}
+
+def sonarProfileName() {
+    return "DevOps"
+}
+
+def getTestMaxParallelForks() {
+    return 3;
+}
+
+android {
+    compileSdkVersion 25
+    buildToolsVersion "25.0.2"
+
+    defaultConfig {
+        applicationId "com.kpgn.sqdemo"
+        minSdkVersion 14
+        targetSdkVersion 21
+        versionCode appVersionCode()
+        versionName appVersionName()
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    productFlavors {
+        dev {
+
+        }
+
+        prod {
+
+        }
+    }
+
+    testOptions {
+        unitTests.all {
+            beforeTest { desc ->
+                println "Executing: ${desc.name} [${desc.className}]"
+            }
+
+            afterTest { desc, result ->
+                println "Result: ${result.resultType}"
+            }
+        }
+    }
+}
+
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+    compile 'com.android.support:appcompat-v7:25.3.1'
+
+    compile 'com.squareup.dagger:dagger:1.2.2'
+    provided 'com.squareup.dagger:dagger-compiler:1.2.2'
+    compile 'com.jakewharton:butterknife:7.0.1'
+
+    testCompile 'org.robolectric:robolectric:3.0'
+
+    testCompile 'junit:junit:4.12'
+    testCompile ('com.squareup.assertj:assertj-android:1.1.0') {
+        exclude module: 'support-annotations'
+    }
+    testCompile 'org.mockito:mockito-core:1.10.19'
+
+    androidTestCompile('com.android.support.test:runner:0.4.1') {
+        exclude module: 'support-annotations'
+    }
+    androidTestCompile 'com.squareup.spoon:spoon-client:1.3.1'
+    androidTestCompile 'org.mockito:mockito-core:1.10.19'
+}
+
+tasks.withType(Test) {
+    maxHeapSize = "2048m"
+    jvmArgs += "-XX:MaxPermSize=512m"
+    forkEvery 50
+    maxParallelForks getTestMaxParallelForks()
+}
+
+sonarRunner {
+    sonarProperties {
+        property "sonar.host.url", System.getenv("SONAR_HOST_URL")
+        property "sonar.jdbc.username", System.getenv("SONAR_DB_USERNAME")
+        property "sonar.jdbc.password", System.getenv("SONAR_DB_PASSWORD")
+        property "sonar.jdbc.url", System.getenv("SONAR_JDBC_URL")
+        property "sonar.login", System.getenv("SONAR_LOGIN")
+        property "sonar.password", System.getenv("SONAR_PASSWORD")
+        property "sonar.projectKey", appName()
+        property "sonar.projectName", appName()
+        property "sonar.projectVersion", appVersionName() + "_" + appVersionCode()
+        property "sonar.java.coveragePlugin", "jacoco"
+        property "sonar.dynamicAnalysis", "reuseReports"
+        property "sonar.jacoco.reportPath", "$buildDir/jacoco/testDevDebugUnitTest.exec"
+        property "sonar.sources", "src/main/java"
+        property "sonar.inclusions", ['**/sqdemo/**']
+        property "sonar.test", "src/test/java"
+        property "sonar.binaries", "$buildDir/intermediates/classes/dev/debug"
+        property "sonar.junit.reportsPath", "$buildDir/test-results/dev/debug"
+        property "sonar.profile", sonarProfileName()
+        property "sonar.verbose", "true"
+    }
+}
+
+def coverageSourceDirs = [
+        'src/main/java',
+]
+
+task testDebugJacoco(type: JacocoReport, dependsOn: "testDevDebugUnitTest") {
+    group = "Reporting"
+    description = "Generate Jacoco coverage reports after running tests."
+    reports {
+        xml.enabled = true
+        html.enabled = true
+    }
+    classDirectories = fileTree(
+            dir: './build/intermediates/classes/dev/debug',
+            excludes: ['**/R*.class',
+            ])
+    sourceDirectories = files(coverageSourceDirs)
+    executionData = files("$buildDir/jacoco/testDevDebugUnitTest.exec")
+    // Bit hacky but fixes https://code.google.com/p/android/issues/detail?id=69174.
+    // We iterate through the compiled .class tree and rename $$ to $.
+    doFirst {
+        new File("$buildDir/intermediates/classes/").eachFileRecurse { file ->
+            if (file.name.contains('$$')) {
+                file.renameTo(file.path.replace('$$', '$'))
+            }
+        }
+    }
+}
+
+repositories {
+    maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
+}
